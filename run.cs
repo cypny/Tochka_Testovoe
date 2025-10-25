@@ -296,7 +296,7 @@ namespace Solution
                 if (state.Rooms[roomIndex][d] == '.')
                     return d;
             }
-
+            //просто коментарий
             return -1;
         }
 
