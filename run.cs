@@ -6,22 +6,24 @@ namespace Solution
 {
     class Program
     {
-        private static readonly int[] RoomPositions = { 2, 4, 6, 8 };
-
-        private static readonly Dictionary<char, int> Costs = new()
+        static void Main()
         {
-            ['A'] = 1, ['B'] = 10, ['C'] = 100, ['D'] = 1000
-        };
+            //RunTests();
 
-        public static readonly Dictionary<int, string[]> GoalRooms = new()
-        {
-            [2] = new[] { "AA", "BB", "CC", "DD" }, [4] = new[] { "AAAA", "BBBB", "CCCC", "DDDD" }
-        };
+            var lines = new List<string>();
+            string line;
 
-        static int Solve(List<string> lines)
-        {
-            var initial = ParseInput(lines);
-            return Dijkstra(initial);
+            while ((line = Console.ReadLine()) != null)
+            {
+                lines.Add(line);
+            }
+
+            if (lines.Count > 0)
+            {
+                var initial = ParseInput(lines);
+                var result = Solver.AStar(initial);
+                Console.WriteLine(result);
+            }
         }
 
         private static State ParseInput(List<string> lines)
@@ -44,59 +46,10 @@ namespace Solution
             return new State(corridor, rooms, depth);
         }
 
-        private static int Dijkstra(State initial)
-        {
-            var queue = new PriorityQueue<State, int>();
-            var visited = new Dictionary<string, int>();
-
-            queue.Enqueue(initial, 0);
-            visited[initial.Key] = 0;
-
-            while (queue.Count > 0)
-            {
-                var current = queue.Dequeue();
-                var currentEnergy = visited[current.Key];
-
-                if (current.IsGoal)
-                    return currentEnergy;
-
-                foreach (var (nextState, moveCost) in MoveGenerator.GenerateMoves(current))
-                {
-                    var newEnergy = currentEnergy + moveCost;
-                    if (!visited.TryGetValue(nextState.Key, out var existingEnergy) || newEnergy < existingEnergy)
-                    {
-                        visited[nextState.Key] = newEnergy;
-                        queue.Enqueue(nextState, newEnergy);
-                    }
-                }
-            }
-
-            return -1;
-        }
-
-        static void Main()
-        {
-            //RunTests();
-        
-            var lines = new List<string>();
-            string line;
-
-            while ((line = Console.ReadLine()) != null)
-            {
-                lines.Add(line);
-            }
-
-            if (lines.Count > 0)
-            {
-                var result = Solve(lines);
-                Console.WriteLine(result);
-            }
-        }
-
         private static void RunTests()
         {
             Console.Error.WriteLine("Running tests...");
-            
+
             var test1 = new List<string>
             {
                 "#############",
@@ -106,10 +59,12 @@ namespace Solution
                 "  #########"
             };
 
-            var result1 = Solve(test1);
+            var initial1 = ParseInput(test1);
+            var result1 = Solver.AStar(initial1);
             var expected1 = 12521;
-            Console.Error.WriteLine($"Test 1 (Depth 2): {result1} (expected {expected1}) - {(result1 == expected1 ? "PASS" : "FAIL")}");
-            
+            Console.Error.WriteLine(
+                $"Test 1 (Depth 2): {result1} (expected {expected1}) - {(result1 == expected1 ? "PASS" : "FAIL")}");
+
             var test2 = new List<string>
             {
                 "#############",
@@ -121,13 +76,14 @@ namespace Solution
                 "  #########"
             };
 
-            var result2 = Solve(test2);
+            var initial2 = ParseInput(test2);
+            var result2 = Solver.AStar(initial2);
             var expected2 = 44169;
-            Console.Error.WriteLine($"Test 2 (Depth 4): {result2} (expected {expected2}) - {(result2 == expected2 ? "PASS" : "FAIL")}");
+            Console.Error.WriteLine(
+                $"Test 2 (Depth 4): {result2} (expected {expected2}) - {(result2 == expected2 ? "PASS" : "FAIL")}");
 
             Console.Error.WriteLine("Tests completed.");
         }
-
     }
 
     public class State
@@ -149,21 +105,10 @@ namespace Solution
         {
             get
             {
-                if (!Program.GoalRooms.TryGetValue(Depth, out var goalRooms))
-                {
-                    for (var i = 0; i < 4; i++)
-                    {
-                        var target = (char)('A' + i);
-                        if (Rooms[i] != new string(target, Depth))
-                            return false;
-                    }
-
-                    return true;
-                }
-
                 for (var i = 0; i < 4; i++)
                 {
-                    if (Rooms[i] != goalRooms[i])
+                    var target = (char)('A' + i);
+                    if (Rooms[i] != new string(target, Depth))
                         return false;
                 }
 
@@ -362,6 +307,100 @@ namespace Solution
             newRooms[roomIndex] = new string(roomChars);
 
             return new State(new string(newCorridor), newRooms, state.Depth);
+        }
+    }
+
+    public static class Solver
+    {
+        private static readonly int[] RoomPositions = { 2, 4, 6, 8 };
+
+        private static readonly Dictionary<char, int> Costs = new()
+        {
+            ['A'] = 1, ['B'] = 10, ['C'] = 100, ['D'] = 1000
+        };
+
+        public static int AStar(State initial)
+        {
+            var queue = new PriorityQueue<State, int>();
+            var visited = new Dictionary<string, int>();
+
+            queue.Enqueue(initial, CalculateHeuristic(initial));
+            visited[initial.Key] = 0;
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                var currentEnergy = visited[current.Key];
+
+                if (current.IsGoal)
+                    return currentEnergy;
+
+                foreach (var (nextState, moveCost) in MoveGenerator.GenerateMoves(current))
+                {
+                    var newEnergy = currentEnergy + moveCost;
+                    if (!visited.TryGetValue(nextState.Key, out var existingEnergy) || newEnergy < existingEnergy)
+                    {
+                        visited[nextState.Key] = newEnergy;
+                        var priority = newEnergy + CalculateHeuristic(nextState);
+                        queue.Enqueue(nextState, priority);
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        private static int CalculateHeuristic(State state)
+        {
+            int totalEstimate = 0;
+
+            for (int pos = 0; pos < state.Corridor.Length; pos++)
+            {
+                char amphipod = state.Corridor[pos];
+                if (amphipod == '.') continue;
+
+                int targetIdx = amphipod - 'A';
+                int targetPos = RoomPositions[targetIdx];
+                int steps = Math.Abs(pos - targetPos);
+                totalEstimate += steps * Costs[amphipod];
+            }
+
+            for (int roomIdx = 0; roomIdx < 4; roomIdx++)
+            {
+                for (int depth = 0; depth < state.Depth; depth++)
+                {
+                    char amphipod = state.Rooms[roomIdx][depth];
+                    if (amphipod == '.') continue;
+
+                    int targetIdx = amphipod - 'A';
+
+                    if (roomIdx == targetIdx)
+                    {
+                        bool isBlocked = false;
+                        for (int deeper = depth + 1; deeper < state.Depth; deeper++)
+                        {
+                            if (state.Rooms[roomIdx][deeper] != amphipod)
+                            {
+                                isBlocked = true;
+                                break;
+                            }
+                        }
+
+                        if (isBlocked)
+                        {
+                            int steps = (depth + 1) * 2;
+                            totalEstimate += steps * Costs[amphipod];
+                        }
+                    }
+                    else
+                    {
+                        int steps = (depth + 1) + Math.Abs(RoomPositions[roomIdx] - RoomPositions[targetIdx]);
+                        totalEstimate += steps * Costs[amphipod];
+                    }
+                }
+            }
+
+            return totalEstimate;
         }
     }
 }
