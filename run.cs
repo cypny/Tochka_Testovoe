@@ -76,6 +76,8 @@ namespace Solution
 
         static void Main()
         {
+            //RunTests();
+        
             var lines = new List<string>();
             string line;
 
@@ -90,6 +92,42 @@ namespace Solution
                 Console.WriteLine(result);
             }
         }
+
+        private static void RunTests()
+        {
+            Console.Error.WriteLine("Running tests...");
+            
+            var test1 = new List<string>
+            {
+                "#############",
+                "#...........#",
+                "###B#C#B#D###",
+                "  #A#D#C#A#",
+                "  #########"
+            };
+
+            var result1 = Solve(test1);
+            var expected1 = 12521;
+            Console.Error.WriteLine($"Test 1 (Depth 2): {result1} (expected {expected1}) - {(result1 == expected1 ? "PASS" : "FAIL")}");
+            
+            var test2 = new List<string>
+            {
+                "#############",
+                "#...........#",
+                "###B#C#B#D###",
+                "  #D#C#B#A#",
+                "  #D#B#A#C#",
+                "  #A#D#C#A#",
+                "  #########"
+            };
+
+            var result2 = Solve(test2);
+            var expected2 = 44169;
+            Console.Error.WriteLine($"Test 2 (Depth 4): {result2} (expected {expected2}) - {(result2 == expected2 ? "PASS" : "FAIL")}");
+
+            Console.Error.WriteLine("Tests completed.");
+        }
+
     }
 
     public class State
@@ -296,7 +334,7 @@ namespace Solution
                 if (state.Rooms[roomIndex][d] == '.')
                     return d;
             }
-            //просто коментарий
+
             return -1;
         }
 
