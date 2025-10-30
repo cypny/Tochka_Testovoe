@@ -4,11 +4,11 @@ using System.Linq;
 
 namespace Solution
 {
-    class Program
+    static class Program
     {
-        static void Main()
+        public static void Main()
         {
-            //RunTests();
+            RunTests();
 
             var lines = new List<string>();
             string line;
@@ -86,6 +86,12 @@ namespace Solution
         }
     }
 
+    public static class Constants
+    {
+        public static readonly int[] RoomPositions = { 2, 4, 6, 8 };
+        public static readonly Dictionary<char, int> Costs = new() { ['A'] = 1, ['B'] = 10, ['C'] = 100, ['D'] = 1000 };
+    }
+
     public class State
     {
         public string Corridor { get; }
@@ -109,7 +115,9 @@ namespace Solution
                 {
                     var target = (char)('A' + i);
                     if (Rooms[i] != new string(target, Depth))
+                    {
                         return false;
+                    }
                 }
 
                 return true;
@@ -119,13 +127,6 @@ namespace Solution
 
     public static class MoveGenerator
     {
-        private static readonly int[] RoomPositions = { 2, 4, 6, 8 };
-
-        private static readonly Dictionary<char, int> Costs = new()
-        {
-            ['A'] = 1, ['B'] = 10, ['C'] = 100, ['D'] = 1000
-        };
-
         public static IEnumerable<(State, int)> GenerateMoves(State state)
         {
             foreach (var move in GenerateRoomToCorridorMoves(state))
@@ -141,16 +142,21 @@ namespace Solution
                 for (var depth = 0; depth < state.Depth; depth++)
                 {
                     if (!CanMoveFromRoom(state, roomIndex, depth))
+                    {
                         continue;
+                    }
 
-                    var amphipod = state.Rooms[roomIndex][depth];
-                    foreach (var corridorPos in GetValidCorridorPositions())
+                    var objectType = state.Rooms[roomIndex][depth];
+                    foreach (var corridorPos in Enumerable.Range(0, 11)
+                                 .Where(i => !Constants.RoomPositions.Contains(i)))
                     {
                         if (!IsPathClearRoomToCorridor(state, roomIndex, corridorPos))
+                        {
                             continue;
+                        }
 
-                        var steps = CalculateStepsFromRoom(roomIndex, depth, corridorPos);
-                        var cost = steps * Costs[amphipod];
+                        var steps = depth + 1 + Math.Abs(Constants.RoomPositions[roomIndex] - corridorPos);
+                        var cost = steps * Constants.Costs[objectType];
                         var newState = CreateRoomToCorridorState(state, roomIndex, depth, corridorPos);
                         yield return (newState, cost);
                     }
@@ -163,20 +169,25 @@ namespace Solution
             for (var corridorPos = 0; corridorPos < 11; corridorPos++)
             {
                 if (state.Corridor[corridorPos] == '.')
+                {
                     continue;
+                }
 
-                var amphipod = state.Corridor[corridorPos];
-                var targetRoom = amphipod - 'A';
-
-                if (targetRoom < 0 || targetRoom > 3) continue;
+                var objectType = state.Corridor[corridorPos];
+                var targetRoom = objectType - 'A';
                 if (!CanMoveToRoom(state, targetRoom) || !IsPathClearCorridorToRoom(state, corridorPos, targetRoom))
+                {
                     continue;
+                }
 
                 var depth = GetTargetDepth(state, targetRoom);
-                if (depth == -1) continue;
+                if (depth == -1)
+                {
+                    continue;
+                }
 
-                var steps = CalculateStepsToRoom(corridorPos, targetRoom, depth);
-                var cost = steps * Costs[amphipod];
+                var steps = Math.Abs(corridorPos - Constants.RoomPositions[targetRoom]) + depth + 1;
+                var cost = steps * Constants.Costs[objectType];
                 var newState = CreateCorridorToRoomState(state, corridorPos, targetRoom, depth);
                 yield return (newState, cost);
             }
@@ -185,16 +196,20 @@ namespace Solution
         private static bool CanMoveFromRoom(State state, int roomIndex, int depth)
         {
             if (state.Rooms[roomIndex][depth] == '.')
+            {
                 return false;
+            }
 
             for (var i = 0; i < depth; i++)
             {
                 if (state.Rooms[roomIndex][i] != '.')
+                {
                     return false;
+                }
             }
 
-            var amphipod = state.Rooms[roomIndex][depth];
-            var targetRoom = amphipod - 'A';
+            var objectType = state.Rooms[roomIndex][depth];
+            var targetRoom = objectType - 'A';
 
             if (roomIndex == targetRoom)
             {
@@ -202,7 +217,9 @@ namespace Solution
                 {
                     var other = state.Rooms[roomIndex][i];
                     if (other != '.' && other - 'A' != roomIndex)
+                    {
                         return true;
+                    }
                 }
 
                 return false;
@@ -217,28 +234,37 @@ namespace Solution
             {
                 var c = state.Rooms[roomIndex][i];
                 if (c != '.' && c - 'A' != roomIndex)
+                {
                     return false;
+                }
+
             }
 
             return true;
         }
 
-        private static IEnumerable<int> GetValidCorridorPositions()
-        {
-            return Enumerable.Range(0, 11).Where(i => !RoomPositions.Contains(i));
-        }
-
         private static bool IsPathClearRoomToCorridor(State state, int roomIndex, int corridorPos)
         {
-            var roomCorridorPos = RoomPositions[roomIndex];
+            var roomCorridorPos = Constants.RoomPositions[roomIndex];
             var start = Math.Min(roomCorridorPos, corridorPos);
             var end = Math.Max(roomCorridorPos, corridorPos);
 
             for (var i = start; i <= end; i++)
             {
-                if (i == roomCorridorPos) continue;
-                if (i < 0 || i >= state.Corridor.Length) return false;
-                if (state.Corridor[i] != '.') return false;
+                if (i == roomCorridorPos)
+                {
+                    continue;
+                }
+
+                if (i < 0 || i >= state.Corridor.Length)
+                {
+                    return false;
+                }
+
+                if (state.Corridor[i] != '.')
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -246,30 +272,29 @@ namespace Solution
 
         private static bool IsPathClearCorridorToRoom(State state, int corridorPos, int roomIndex)
         {
-            var roomCorridorPos = RoomPositions[roomIndex];
+            var roomCorridorPos = Constants.RoomPositions[roomIndex];
             var start = Math.Min(roomCorridorPos, corridorPos);
             var end = Math.Max(roomCorridorPos, corridorPos);
 
             for (var i = start; i <= end; i++)
             {
-                if (i == corridorPos) continue;
-                if (i < 0 || i >= state.Corridor.Length) return false;
-                if (state.Corridor[i] != '.') return false;
+                if (i == corridorPos)
+                {
+                    continue;
+                }
+
+                if (i < 0 || i >= state.Corridor.Length)
+                {
+                    return false;
+                }
+
+                if (state.Corridor[i] != '.')
+                {
+                    return false;
+                }
             }
 
             return true;
-        }
-
-        private static int CalculateStepsFromRoom(int roomIndex, int depth, int corridorPos)
-        {
-            var roomCorridorPos = RoomPositions[roomIndex];
-            return depth + 1 + Math.Abs(roomCorridorPos - corridorPos);
-        }
-
-        private static int CalculateStepsToRoom(int corridorPos, int roomIndex, int depth)
-        {
-            var roomCorridorPos = RoomPositions[roomIndex];
-            return Math.Abs(corridorPos - roomCorridorPos) + depth + 1;
         }
 
         private static int GetTargetDepth(State state, int roomIndex)
@@ -277,7 +302,9 @@ namespace Solution
             for (var d = state.Depth - 1; d >= 0; d--)
             {
                 if (state.Rooms[roomIndex][d] == '.')
+                {
                     return d;
+                }
             }
 
             return -1;
@@ -312,13 +339,6 @@ namespace Solution
 
     public static class Solver
     {
-        private static readonly int[] RoomPositions = { 2, 4, 6, 8 };
-
-        private static readonly Dictionary<char, int> Costs = new()
-        {
-            ['A'] = 1, ['B'] = 10, ['C'] = 100, ['D'] = 1000
-        };
-
         public static int AStar(State initial)
         {
             var queue = new PriorityQueue<State, int>();
@@ -333,7 +353,9 @@ namespace Solution
                 var currentEnergy = visited[current.Key];
 
                 if (current.IsGoal)
+                {
                     return currentEnergy;
+                }
 
                 foreach (var (nextState, moveCost) in MoveGenerator.GenerateMoves(current))
                 {
@@ -350,53 +372,71 @@ namespace Solution
             return -1;
         }
 
-        private static int CalculateHeuristic(State state)
+        private static int EstimateCorridorToRooms(State state)
         {
-            int totalEstimate = 0;
-
-            for (int pos = 0; pos < state.Corridor.Length; pos++)
+            var result = 0;
+            for (var pos = 0; pos < state.Corridor.Length; pos++)
             {
-                char amphipod = state.Corridor[pos];
-                if (amphipod == '.') continue;
+                var objectType = state.Corridor[pos];
+                if (objectType == '.')
+                {
+                    continue;
+                }
 
-                int targetIdx = amphipod - 'A';
-                int targetPos = RoomPositions[targetIdx];
-                int steps = Math.Abs(pos - targetPos);
-                totalEstimate += steps * Costs[amphipod];
+                var targetIdx = objectType - 'A';
+                var targetPos = Constants.RoomPositions[targetIdx];
+                var steps = Math.Abs(pos - targetPos);
+                result += steps * Constants.Costs[objectType];
             }
 
-            for (int roomIdx = 0; roomIdx < 4; roomIdx++)
+            return result;
+        }
+
+        private static void IterateOneRoomObject(State state, ref int totalEstimate, int roomIdx, int depth)
+        {
+            var objectType = state.Rooms[roomIdx][depth];
+            if (objectType == '.')
             {
-                for (int depth = 0; depth < state.Depth; depth++)
+                return;
+            }
+
+            var targetIdx = objectType - 'A';
+
+            if (roomIdx == targetIdx)
+            {
+                var isBlocked = false;
+                for (var deeper = depth + 1; deeper < state.Depth; deeper++)
                 {
-                    char amphipod = state.Rooms[roomIdx][depth];
-                    if (amphipod == '.') continue;
-
-                    int targetIdx = amphipod - 'A';
-
-                    if (roomIdx == targetIdx)
+                    if (state.Rooms[roomIdx][deeper] != objectType)
                     {
-                        bool isBlocked = false;
-                        for (int deeper = depth + 1; deeper < state.Depth; deeper++)
-                        {
-                            if (state.Rooms[roomIdx][deeper] != amphipod)
-                            {
-                                isBlocked = true;
-                                break;
-                            }
-                        }
+                        isBlocked = true;
+                        break;
+                    }
+                }
 
-                        if (isBlocked)
-                        {
-                            int steps = (depth + 1) * 2;
-                            totalEstimate += steps * Costs[amphipod];
-                        }
-                    }
-                    else
-                    {
-                        int steps = (depth + 1) + Math.Abs(RoomPositions[roomIdx] - RoomPositions[targetIdx]);
-                        totalEstimate += steps * Costs[amphipod];
-                    }
+                if (isBlocked)
+                {
+                    var steps = (depth + 1) * 2;
+                    totalEstimate += steps * Constants.Costs[objectType];
+                }
+            }
+            else
+            {
+                var steps = (depth + 1) +
+                            Math.Abs(Constants.RoomPositions[roomIdx] - Constants.RoomPositions[targetIdx]);
+                totalEstimate += steps * Constants.Costs[objectType];
+            }
+        }
+
+        private static int CalculateHeuristic(State state)
+        {
+            var totalEstimate = EstimateCorridorToRooms(state);
+
+            for (var roomIdx = 0; roomIdx < 4; roomIdx++)
+            {
+                for (var depth = 0; depth < state.Depth; depth++)
+                {
+                    IterateOneRoomObject(state, ref totalEstimate, roomIdx, depth);
                 }
             }
 

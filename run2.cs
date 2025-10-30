@@ -4,7 +4,7 @@ using System.Linq;
 
 class Program
 {
-    static List<string> Solve(List<(string, string)> edges)
+    public static List<string> Solve(List<(string, string)> edges)
     {
         var result = new List<string>();
         return result;
