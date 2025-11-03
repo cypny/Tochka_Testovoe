@@ -122,8 +122,33 @@
         };
 
         var expected6 = new[] { "D-b", "D-c"};
-        allPassed &= RunTest(edges1, expected1, "Тест 6");
-
+        allPassed &= RunTest(edges6, expected6, "Тест 6");
+        var edges7 = new List<(string, string)>
+        {
+            ("a", "b"),
+            ("b", "c"),
+            ("c", "d"),
+            ("b", "A"),
+            ("c", "B"),
+            ("d", "C"),
+        };
+        var expected7 = new[] { "A-b", "B-c","C-d"};
+        allPassed &= RunTest(edges7, expected7, "Тест 7");
+        var edges8 = new List<(string, string)>
+        {
+            ("a", "b"),
+            ("b", "c"),
+            ("c", "d"),
+            ("c", "e"),
+            ("A", "d"),
+            ("A", "e"),
+            ("c", "f"),
+            ("c", "g"),
+            ("f", "B"),
+            ("g", "B"),
+        };
+        var expected8 = new[] { "A-d", "A-e","B-f","B-g"};
+        allPassed &= RunTest(edges8, expected8, "Тест 8");
         Console.WriteLine($"\n{(allPassed ? "Все тесты пройдены!" : "Некоторые тесты провалены")}");
     }
 
