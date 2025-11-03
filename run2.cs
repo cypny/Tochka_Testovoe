@@ -106,7 +106,7 @@ class Program
             .ToList();
     }
 
-    static void Main()
+    static public void Main()
     {
         var edges = ReadInputEdges();
         var result = Solve(edges);

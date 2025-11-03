@@ -113,6 +113,17 @@
             "L-h"
         };
         allPassed &= RunTest(edges5, expected5, "Тест 5");
+        var edges6 = new List<(string, string)>
+        {
+            ("a", "b"),
+            ("a", "c"),
+            ("b", "D"),
+            ("c", "D"),
+        };
+
+        var expected6 = new[] { "D-b", "D-c"};
+        allPassed &= RunTest(edges1, expected1, "Тест 6");
+
         Console.WriteLine($"\n{(allPassed ? "Все тесты пройдены!" : "Некоторые тесты провалены")}");
     }
 
