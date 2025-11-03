@@ -55,7 +55,7 @@
             ("h", "i"),
             ("i", "I")
         };
-        var expected3 = new[] { "G-g", "H-g", "A-e", "I-i", "B-e", "C-e", "D-e", "E-e", "F-e" };
+        var expected3 = new[] {"A-e", "G-g", "H-g", "B-e", "C-e","I-i", "D-e", "E-e", "F-e" };
         allPassed &= RunTest(edges3, expected3, "Тест 3");
 
         var edges4 = new List<(string, string)>
@@ -75,27 +75,42 @@
             ("a", "b"),
             ("b", "c"),
             ("c", "A"),
+
             ("a", "d"),
             ("d", "e"),
+
             ("e", "f"),
             ("f", "B"),
-            ("f", "B1"),
-            ("f", "B2"),
+            ("f", "C"),     
+            ("f", "D"),
+
             ("e", "g"),
-            ("g", "C"),
-            ("g", "C1"),
-            ("g", "C2"),
-            ("g", "C3"),
+            ("g", "E"),
+            ("g", "F"), 
+            ("g", "G"),
+            ("g", "H"),
+
             ("e", "h"),
-            ("h", "D"),
-            ("h", "D1"),
-            ("h", "D2"),
-            ("h", "D3")
+            ("h", "I"),
+            ("h", "J"),
+            ("h", "K"),
+            ("h", "L")
         };
 
         var expected5 = new[]
         {
-            "B-f", "B1-f", "A-c", "C-g", "C1-g", "C2-g", "D-h", "B2-f", "D1-h", "C3-g", "D2-h", "D3-h"
+            "B-f",
+            "C-f",
+            "A-c",
+            "E-g",
+            "F-g",
+            "G-g",
+            "I-h",
+            "D-f",
+            "J-h",
+            "H-g",
+            "K-h",
+            "L-h"
         };
         allPassed &= RunTest(edges5, expected5, "Тест 5");
         Console.WriteLine($"\n{(allPassed ? "Все тесты пройдены!" : "Некоторые тесты провалены")}");
