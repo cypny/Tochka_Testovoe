@@ -75,6 +75,7 @@ class Program
     private static (Node? Gateway, Node? Node) GetCriticalCorridor(List<(Node Gateway, Node Node)> corridorsList,
         Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
     {
+        corridorsList = СorridorsOpirations.GetCorretcOrder(corridorsList,distances,prev);
         var nodeGatewayCounts = СorridorsOpirations.GetNodeGatewayCounts(corridorsList);
         var countLives = CalculateCoutLives(corridorsList, nodeGatewayCounts, distances, prev);
         if (countLives[corridorsList[0].Node] <= 0)
@@ -236,7 +237,41 @@ public static class СorridorsOpirations
     }
 
 
+    public static List<(Node Gateway, Node Node)> GetCorretcOrder(List<(Node Gateway, Node Node)> corridorsList,Dictionary<Node, int> originalDistances, Dictionary<Node, Node> prev)
+    {
+        var orderedCorridors = new List<(Node Gateway, Node Node)>(){corridorsList[0]};
+        var visited = new HashSet<(Node Gateway, Node Node)>();
+        while (orderedCorridors.Count!=corridorsList.Count)
+        {
+            var currentCorridor = orderedCorridors[orderedCorridors.Count - 1];
+            visited.Add(currentCorridor);
+            var minDistance = int.MaxValue;
+            (Node Gateway, Node Node) nextCorridor = (null,null);
+            foreach (var corridor in corridorsList)
+            {
+                if (visited.Contains(corridor))
+                {
+                    continue;
+                }
 
+                var lca = FindLCA(currentCorridor.Node, corridor.Gateway, prev, originalDistances);
+                int distance = originalDistances[currentCorridor.Node] + originalDistances[corridor.Gateway] - 2 * originalDistances[lca] - 1;
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    nextCorridor = corridor;
+                }
+                else if ( distance==minDistance)
+                {
+                    
+                }
+            }
+        
+            orderedCorridors.Add(nextCorridor);
+        }
+
+        return orderedCorridors;
+    }
     public static Dictionary<Node, int> GetNodeGatewayCounts(List<(Node Gateway, Node Node)> corridorsList)
     {
         var nodeGatewayCounts = new Dictionary<Node, int>();
