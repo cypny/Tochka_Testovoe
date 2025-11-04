@@ -446,6 +446,7 @@ public class Virus
             current = neighbors.First();
             path.Insert(0, current);
         }
+//просто коментарий
         return path;
     }
 }
