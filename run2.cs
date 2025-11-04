@@ -277,7 +277,7 @@ public static class GraphExtentions
 
         queue.Enqueue(start);
         distances[start] = 0;
-
+        //мда
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
