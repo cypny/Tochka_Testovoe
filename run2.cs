@@ -48,44 +48,78 @@ class Program
         return graph.GetAllNodes().Where(n => n.IsGateway).ToList();
     }
 
-
     private static (Node? Gateway, Node? Node) SelectCriticalEdge(Virus virus, Graph graph, List<Node> gateways)
     {
-        var distances = graph.CalculateDistances(virus.CurrentPosition);
-        var availableCorridors = GetAvailableCorridors(gateways, graph);
+        (var distances, var prev) = graph.CalculateDistances(virus.CurrentPosition);
+        var availableCorridors = graph.GetAvailableCorridors(gateways);
         if (!availableCorridors.Any())
         {
             return (null, null);
         }
 
-        var gatewayNodeCounts = GetGatewayNodeCounts(availableCorridors);
-        var criticalCorridors = availableCorridors
+        var corridorsList = availableCorridors
             .Where(x => distances.ContainsKey(x.Gateway))
-            .Where(x => distances[x.Gateway] - gatewayNodeCounts[x.Node] <= 0)
             .OrderBy(x => distances[x.Gateway])
             .ThenBy(x => x.Gateway.Name)
             .ThenBy(x => x.Node.Name)
             .ToList();
-        return criticalCorridors.Any()
-            ? criticalCorridors.First()
-            : availableCorridors.First();
-    }
-
-    private static Dictionary<Node, int> GetGatewayNodeCounts(List<(Node Gateway, Node Node)> availableCorridors)
-    {
-        var gatewayNodeCounts = new Dictionary<Node, int>();
-        foreach (var items in availableCorridors)
+        if (!corridorsList.Any())
         {
-            var node = items.Node;
-            if (!gatewayNodeCounts.TryGetValue(node, out var countGateway))
-            {
-                gatewayNodeCounts[node] = 0;
-            }
-
-            gatewayNodeCounts[node]++;
+            return availableCorridors.First();
         }
 
-        return gatewayNodeCounts;
+        var сriticalCorridor = GetCriticalCorridor(corridorsList, distances, prev);
+        return сriticalCorridor.Node == null ? availableCorridors.First() : сriticalCorridor;
+    }
+
+    private static (Node? Gateway, Node? Node) GetCriticalCorridor(List<(Node Gateway, Node Node)> corridorsList,
+        Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
+    {
+        var nodeGatewayCounts = СorridorsOpirations.GetNodeGatewayCounts(corridorsList);
+        var countLives = CalculateCoutLives(corridorsList, nodeGatewayCounts, distances, prev);
+        if (countLives[corridorsList[0].Node] <= 0)
+        {
+            return corridorsList[0];
+        }
+
+        if (corridorsList.Any(x => countLives[x.Node] <= 0))
+        {
+            var criticalCorridors = corridorsList.FirstOrDefault(x => nodeGatewayCounts[x.Node] > 1);
+            return criticalCorridors;
+        }
+
+        return (null, null);
+    }
+
+    private static Dictionary<Node, int> CalculateCoutLives(List<(Node Gateway, Node Node)> corridorsList,
+        Dictionary<Node, int> nodeGatewayCounts, Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
+    {
+        var countLives = new Dictionary<Node, int>();
+        var corridorsDistant = СorridorsOpirations.CalculateGatewayNeighborDistances(corridorsList, distances, prev);
+
+        countLives[corridorsList[0].Node] = corridorsDistant[corridorsList[0].Node] -
+                                            nodeGatewayCounts[corridorsList[0].Node];
+        var num = 1;
+        if (corridorsList.Count > 1 &&
+            nodeGatewayCounts.ContainsKey(corridorsList[0].Node) &&
+            nodeGatewayCounts[corridorsList[0].Node] == 1)
+        {
+            countLives[corridorsList[1].Node] = distances[corridorsList[1].Gateway] -
+                                                nodeGatewayCounts[corridorsList[1].Node];
+            num = 2;
+        }
+
+        for (int i = num; i < corridorsList.Count; i++)
+        {
+            var previousItem = corridorsList[i - 1];
+            var currentItem = corridorsList[i];
+            countLives.TryAdd(currentItem.Node,
+                countLives[previousItem.Node] +
+                corridorsDistant[currentItem.Node] -
+                nodeGatewayCounts[currentItem.Node]);
+        }
+
+        return countLives;
     }
 
     private static void RemoveEdgeAndRecord(Graph graph, (Node Gateway, Node Node) edge, List<string> result)
@@ -94,17 +128,6 @@ class Program
         result.Add($"{edge.Gateway.Name}-{edge.Node.Name}");
     }
 
-    private static List<(Node Gateway, Node Node)> GetAvailableCorridors(
-        List<Node> gateways,
-        Graph graph)
-    {
-        return gateways
-            .SelectMany(gateway => graph.GetNeighbors(gateway)
-                .Select(node => (Gateway: gateway, Node: node)))
-            .OrderBy(x => x.Gateway.Name)
-            .ThenBy(x => x.Node.Name)
-            .ToList();
-    }
 
     static public void Main()
     {
@@ -160,6 +183,75 @@ public class Node
     }
 }
 
+public static class СorridorsOpirations
+{
+    public static Node FindLCA(Node a, Node b, Dictionary<Node, Node> parents, Dictionary<Node, int> distances)
+    {
+        var nodeA = a;
+        var nodeB = b;
+
+        while (distances[nodeA] > distances[nodeB])
+        {
+            nodeA = parents[nodeA];
+        }
+
+        while (distances[nodeB] > distances[nodeA])
+        {
+            nodeB = parents[nodeB];
+        }
+
+        while (nodeA != nodeB)
+        {
+            nodeA = parents[nodeA];
+            nodeB = parents[nodeB];
+        }
+
+        return nodeA;
+    }
+
+    public static Dictionary<Node, int> CalculateGatewayNeighborDistances(
+        List<(Node Gateway, Node Node)> corridorsList, Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
+    {
+        var result = new Dictionary<Node, int>();
+        if (corridorsList.Count > 0)
+        {
+            result[corridorsList[0].Node] = distances[corridorsList[0].Gateway];
+        }
+
+        for (int i = 1; i < corridorsList.Count; i++)
+        {
+            var currentCorridor = corridorsList[i];
+            var previousGateway = corridorsList[i - 1].Gateway;
+            if (!distances.ContainsKey(currentCorridor.Node) || result.ContainsKey(currentCorridor.Node))
+            {
+                continue;
+            }
+
+            var lca = FindLCA(currentCorridor.Node, previousGateway, prev, distances);
+            int distance = distances[currentCorridor.Node] + distances[previousGateway] - 2 * distances[lca] - 1;
+            result[currentCorridor.Node] = distance;
+        }
+
+        return result;
+    }
+
+
+
+    public static Dictionary<Node, int> GetNodeGatewayCounts(List<(Node Gateway, Node Node)> corridorsList)
+    {
+        var nodeGatewayCounts = new Dictionary<Node, int>();
+        foreach (var corridor in corridorsList)
+        {
+            var node = corridor.Node;
+            nodeGatewayCounts[node] = nodeGatewayCounts.TryGetValue(node, out int count)
+                ? count + 1
+                : 1;
+        }
+
+        return nodeGatewayCounts;
+    }
+}
+
 public class Graph
 {
     private readonly Dictionary<Node, HashSet<Node>> _adjacencyList = new();
@@ -187,14 +279,14 @@ public class Graph
 
     public void RemoveEdge(Node u, Node v)
     {
-        if (_adjacencyList.ContainsKey(u))
+        if (_adjacencyList.TryGetValue(u, out var valueU))
         {
-            _adjacencyList[u].Remove(v);
+            valueU.Remove(v);
         }
 
-        if (_adjacencyList.ContainsKey(v))
+        if (_adjacencyList.TryGetValue(v, out var valueV))
         {
-            _adjacencyList[v].Remove(u);
+            valueV.Remove(u);
         }
     }
 
@@ -205,19 +297,32 @@ public class Graph
             : new HashSet<Node>();
     }
 
+    public List<(Node Gateway, Node Node)> GetAvailableCorridors(
+        List<Node> gateways)
+    {
+        return gateways
+            .SelectMany(gateway => GetNeighbors(gateway)
+                .Select(node => (Gateway: gateway, Node: node)))
+            .OrderBy(x => x.Gateway.Name)
+            .ThenBy(x => x.Node.Name)
+            .ToList();
+    }
+
     public Node GetNode(string name) => _nodes.TryGetValue(name, out var node) ? node : null;
 
     public IEnumerable<Node> GetAllNodes() => _nodes.Values;
 
-    public Dictionary<Node, int> CalculateDistances(Node start)
+    public (Dictionary<Node, int> distances, Dictionary<Node, Node> parents) CalculateDistances(Node start)
     {
         var distances = new Dictionary<Node, int>();
+        var parents = new Dictionary<Node, Node>();
         var visited = new HashSet<Node>();
         var queue = new Queue<Node>();
 
         queue.Enqueue(start);
         visited.Add(start);
         distances[start] = 0;
+        parents[start] = null;
 
         while (queue.Count > 0)
         {
@@ -230,12 +335,13 @@ public class Graph
                 {
                     visited.Add(neighbor);
                     distances[neighbor] = distances[current] + 1;
+                    parents[neighbor] = current;
                     queue.Enqueue(neighbor);
                 }
             }
         }
 
-        return distances;
+        return (distances, parents);
     }
 }
 
@@ -252,12 +358,8 @@ public class Virus
 
     public void MakeMove(Graph graph, List<Node> gateways)
     {
-        if (CurrentPosition == null)
-        {
-            return;
-        }
 
-        var distances = graph.CalculateDistances(CurrentPosition);
+        (var distances, var parents) = graph.CalculateDistances(CurrentPosition);
         var targetGateway = CalculateTargetGateway(gateways, distances);
         if (targetGateway == null)
         {
