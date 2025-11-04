@@ -1,2 +1,0 @@
-# Tochka_Testovoe
-
