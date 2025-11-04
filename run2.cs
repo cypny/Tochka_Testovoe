@@ -6,21 +6,27 @@ class Program
 {
     static public List<string> Solve(List<(string, string)> edges)
     {
-        var result = new List<string>();
         var graph = BuildGraph(edges);
         var virus = InitializeVirus(graph);
-        var gateways = GetGateways(graph);
+        var result = new List<string>();
 
         while (true)
         {
-            var edgeToRemove = SelectCriticalEdge(virus, graph, gateways);
-            if (edgeToRemove.Gateway == null && edgeToRemove.Node == null)
+            var edgeToRemove = SelectEdgeToRemove(graph, virus);
+            if (edgeToRemove.Gateway == null || edgeToRemove.Node == null)
             {
                 break;
             }
 
             RemoveEdgeAndRecord(graph, edgeToRemove, result);
-            virus.MakeMove(graph, gateways);
+            
+            var nextMove = virus.ComputeNextMove(graph);
+            if (nextMove.gate == null)
+            {
+                break;
+            }
+
+            virus.MoveTo(nextMove.nextNode);
         }
 
         return result;
@@ -29,119 +35,124 @@ class Program
     private static Graph BuildGraph(List<(string, string)> edges)
     {
         var graph = new Graph();
-        foreach (var edge in edges)
+        foreach (var (u, v) in edges)
         {
-            graph.AddEdge(edge.Item1, edge.Item2);
+            graph.AddEdge(u, v);
         }
-
         return graph;
     }
 
     private static Virus InitializeVirus(Graph graph)
     {
-        var startNode = graph.GetNode("a") ?? throw new InvalidOperationException("Start node 'a' not found");
-        return new Virus(startNode, graph);
+        var startNode = new Node("a");
+        return new Virus(startNode);
     }
 
-    private static List<Node> GetGateways(Graph graph)
+    public static List<Node> GetGateways(Graph graph)
     {
-        return graph.GetAllNodes().Where(n => n.IsGateway).ToList();
+        return graph.nodes.Values.Where(n => n.IsGateway).ToList();
     }
 
-    private static (Node? Gateway, Node? Node) SelectCriticalEdge(Virus virus, Graph graph, List<Node> gateways)
+    private static (Node Gateway, Node Node) SelectEdgeToRemove(Graph graph, Virus virus)
     {
-        (var distances, var prev) = graph.CalculateDistances(virus.CurrentPosition);
-        var availableCorridors = graph.GetAvailableCorridors(gateways);
-        if (!availableCorridors.Any())
+        var result = GetEdgeToRemove(graph, virus);
+        if (result?.EdgeToRemove == null)
         {
             return (null, null);
         }
 
-        var corridorsList = availableCorridors
-            .Where(x => distances.ContainsKey(x.Gateway))
-            .OrderBy(x => distances[x.Gateway])
-            .ThenBy(x => x.Gateway.Name)
-            .ThenBy(x => x.Node.Name)
+        var (gatewayNode, node) = result.EdgeToRemove.Value;
+        return (gatewayNode, node);
+    }
+
+    private static Dictionary<string, Dictionary<string, SearchResult>> _memo = new Dictionary<string, Dictionary<string, SearchResult>>();
+
+    private static SearchResult? GetEdgeToRemove(Graph graph, Virus virus)
+    {
+        var edgesKey = graph.GetStateKey();
+        var virusPosition = virus.currentPosition;
+        
+        if (!_memo.ContainsKey(edgesKey))
+        {
+            _memo[edgesKey] = new Dictionary<string, SearchResult>();
+        }
+
+        if (_memo[edgesKey].ContainsKey(virusPosition.name))
+        {
+            return _memo[edgesKey][virusPosition.name];
+        }
+        
+        var move = virus.ComputeNextMove(graph);
+        if (move.gate == null)
+        {
+            var result = new SearchResult(null, new List<(Node, Node)>());
+            _memo[edgesKey][virusPosition.name] = result;
+            return result;
+        }
+
+        var candidates = graph.GetAvailableCorridors(GetGateways(graph))
+            .OrderBy(x => x.Gateway.name)
+            .ThenBy(x => x.Node.name)
             .ToList();
-        if (!corridorsList.Any())
+
+        if (candidates.Count == 0)
         {
-            return availableCorridors.First();
+            _memo[edgesKey][virusPosition.name] = null;
+            return null;
         }
 
-        var сriticalCorridor = GetCriticalCorridor(corridorsList, distances, prev);
-        return сriticalCorridor.Node == null ? availableCorridors.First() : сriticalCorridor;
-    }
-
-    private static (Node? Gateway, Node? Node) GetCriticalCorridor(List<(Node Gateway, Node Node)> corridorsList,
-        Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
-    {
-        corridorsList = СorridorsOpirations.GetCorretcOrder(corridorsList,distances,prev);
-        var nodeGatewayCounts = СorridorsOpirations.GetNodeGatewayCounts(corridorsList);
-        var countLives = CalculateCoutLives(corridorsList, nodeGatewayCounts, distances, prev);
-        if (countLives[corridorsList[0].Node] <= 0)
+        foreach (var corridor in candidates)
         {
-            return corridorsList[0];
+            var edge = (corridor.Gateway, corridor.Node);
+            var newGraph = graph.Clone();
+            newGraph.RemoveEdge(edge.Item1, edge.Item2);
+            
+            var simulatedVirus = new Virus(virus.currentPosition);
+            var newMove = simulatedVirus.ComputeNextMove(newGraph);
+            if (newMove.gate == null)
+            {
+                var result = new SearchResult(edge, new List<(Node, Node)>());
+                _memo[edgesKey][virusPosition.name] = result;
+                return result;
+            }
+
+            var nextPos = newMove.nextNode;
+            if (nextPos != null && nextPos.IsGateway)
+            {
+                continue;
+            }
+            
+            simulatedVirus.MoveTo(nextPos);
+            var deeper = GetEdgeToRemove(newGraph, simulatedVirus);
+            if (deeper != null)
+            {
+                var sequence = new List<(Node, Node)> { edge };
+                if (deeper.EdgeToRemove != null)
+                {
+                    sequence.Add(deeper.EdgeToRemove.Value);
+                }
+                sequence.AddRange(deeper.RemainingEdges);
+
+                var firstEdge = sequence.Count > 0 ? sequence[0] : ((Node, Node)?)null;
+                var remaining = sequence.Skip(1).ToList();
+                
+                var result = new SearchResult(firstEdge, remaining);
+                _memo[edgesKey][virusPosition.name] = result;
+                return result;
+            }
         }
 
-        if (corridorsList.Any(x => countLives[x.Node] <= 0))
-        {
-            var criticalCorridors = corridorsList.FirstOrDefault(x => nodeGatewayCounts[x.Node] > 1);
-            return criticalCorridors;
-        }
-
-        return (null, null);
-    }
-
-    private static Dictionary<Node, int> CalculateCoutLives(List<(Node Gateway, Node Node)> corridorsList,
-        Dictionary<Node, int> nodeGatewayCounts, Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
-    {
-        var countLives = new Dictionary<Node, int>();
-        var corridorsDistant = СorridorsOpirations.CalculateGatewayNeighborDistances(corridorsList, distances, prev);
-
-        countLives[corridorsList[0].Node] = corridorsDistant[corridorsList[0].Node] -
-                                            nodeGatewayCounts[corridorsList[0].Node];
-        var num = 1;
-        if (corridorsList.Count > 1 &&
-            nodeGatewayCounts.ContainsKey(corridorsList[0].Node) &&
-            nodeGatewayCounts[corridorsList[0].Node] == 1)
-        {
-            countLives[corridorsList[1].Node] = distances[corridorsList[1].Gateway] -
-                                                nodeGatewayCounts[corridorsList[1].Node];
-            num = 2;
-        }
-
-        for (int i = num; i < corridorsList.Count; i++)
-        {
-            var previousItem = corridorsList[i - 1];
-            var currentItem = corridorsList[i];
-            countLives.TryAdd(currentItem.Node,
-                countLives[previousItem.Node] +
-                corridorsDistant[currentItem.Node] -
-                nodeGatewayCounts[currentItem.Node]);
-        }
-
-        return countLives;
+        _memo[edgesKey][virusPosition.name] = null;
+        return null;
     }
 
     private static void RemoveEdgeAndRecord(Graph graph, (Node Gateway, Node Node) edge, List<string> result)
     {
         graph.RemoveEdge(edge.Gateway, edge.Node);
-        result.Add($"{edge.Gateway.Name}-{edge.Node.Name}");
+        result.Add($"{edge.Gateway.name}-{edge.Node.name}");
     }
 
-
-    static public void Main()
-    {
-        var edges = ReadInputEdges();
-        var result = Solve(edges);
-
-        foreach (var edge in result)
-        {
-            Console.WriteLine(edge);
-        }
-    }
-
-    private static List<(string, string)> ReadInputEdges()
+    static void Main()
     {
         var edges = new List<(string, string)>();
         string line;
@@ -158,295 +169,232 @@ class Program
                 }
             }
         }
-
-        return edges;
+        var result = Solve(edges);
+        foreach (var edge in result)
+        {
+            Console.WriteLine(edge);
+        }
     }
 }
 
 public class Node
 {
-    public string Name { get; }
-    public bool IsGateway => char.IsUpper(Name[0]);
+    public string name;
+    public bool IsGateway => char.IsUpper(name[0]);
 
     public Node(string name)
     {
-        Name = name;
+        this.name = name;
     }
-
     public override bool Equals(object obj)
     {
-        return obj is Node other && Name == other.Name;
-    }
+        return obj is Node other && name == other.name;
+    } 
 
     public override int GetHashCode()
     {
-        return Name?.GetHashCode() ?? 0;
-    }
-}
-
-public static class СorridorsOpirations
-{
-    public static Node FindLCA(Node a, Node b, Dictionary<Node, Node> parents, Dictionary<Node, int> distances)
-    {
-        var nodeA = a;
-        var nodeB = b;
-
-        while (distances[nodeA] > distances[nodeB])
-        {
-            nodeA = parents[nodeA];
-        }
-
-        while (distances[nodeB] > distances[nodeA])
-        {
-            nodeB = parents[nodeB];
-        }
-
-        while (nodeA != nodeB)
-        {
-            nodeA = parents[nodeA];
-            nodeB = parents[nodeB];
-        }
-
-        return nodeA;
-    }
-
-    public static Dictionary<Node, int> CalculateGatewayNeighborDistances(
-        List<(Node Gateway, Node Node)> corridorsList, Dictionary<Node, int> distances, Dictionary<Node, Node> prev)
-    {
-        var result = new Dictionary<Node, int>();
-        if (corridorsList.Count > 0)
-        {
-            result[corridorsList[0].Node] = distances[corridorsList[0].Gateway];
-        }
-
-        for (int i = 1; i < corridorsList.Count; i++)
-        {
-            var currentCorridor = corridorsList[i];
-            var previousGateway = corridorsList[i - 1].Gateway;
-            if (!distances.ContainsKey(currentCorridor.Node) || result.ContainsKey(currentCorridor.Node))
-            {
-                continue;
-            }
-
-            var lca = FindLCA(currentCorridor.Node, previousGateway, prev, distances);
-            int distance = distances[currentCorridor.Node] + distances[previousGateway] - 2 * distances[lca] - 1;
-            result[currentCorridor.Node] = distance;
-        }
-
-        return result;
-    }
-
-
-    public static List<(Node Gateway, Node Node)> GetCorretcOrder(List<(Node Gateway, Node Node)> corridorsList,Dictionary<Node, int> originalDistances, Dictionary<Node, Node> prev)
-    {
-        var orderedCorridors = new List<(Node Gateway, Node Node)>(){corridorsList[0]};
-        var visited = new HashSet<(Node Gateway, Node Node)>();
-        while (orderedCorridors.Count!=corridorsList.Count)
-        {
-            var currentCorridor = orderedCorridors[orderedCorridors.Count - 1];
-            visited.Add(currentCorridor);
-            var minDistance = int.MaxValue;
-            (Node Gateway, Node Node) nextCorridor = (null,null);
-            foreach (var corridor in corridorsList)
-            {
-                if (visited.Contains(corridor))
-                {
-                    continue;
-                }
-
-                var lca = FindLCA(currentCorridor.Node, corridor.Gateway, prev, originalDistances);
-                int distance = originalDistances[currentCorridor.Node] + originalDistances[corridor.Gateway] - 2 * originalDistances[lca] - 1;
-                if (distance < minDistance)
-                {
-                    minDistance = distance;
-                    nextCorridor = corridor;
-                }
-                else if ( distance==minDistance)
-                {
-                    
-                }
-            }
-        
-            orderedCorridors.Add(nextCorridor);
-        }
-
-        return orderedCorridors;
-    }
-    public static Dictionary<Node, int> GetNodeGatewayCounts(List<(Node Gateway, Node Node)> corridorsList)
-    {
-        var nodeGatewayCounts = new Dictionary<Node, int>();
-        foreach (var corridor in corridorsList)
-        {
-            var node = corridor.Node;
-            nodeGatewayCounts[node] = nodeGatewayCounts.TryGetValue(node, out int count)
-                ? count + 1
-                : 1;
-        }
-
-        return nodeGatewayCounts;
-    }
+        return name?.GetHashCode() ?? 0;
+    } 
 }
 
 public class Graph
 {
-    private readonly Dictionary<Node, HashSet<Node>> _adjacencyList = new();
-    private readonly Dictionary<string, Node> _nodes = new();
+    public readonly Dictionary<Node, HashSet<Node>> adjacencyList = new();
+    public readonly Dictionary<string, Node> nodes = new();
 
     public void AddEdge(string u, string v)
     {
         var nodeU = GetOrCreateNode(u);
         var nodeV = GetOrCreateNode(v);
-        _adjacencyList[nodeU].Add(nodeV);
-        _adjacencyList[nodeV].Add(nodeU);
+        AddEdge(nodeU, nodeV);
     }
-
-    private Node GetOrCreateNode(string name)
+    
+    private void AddEdge(Node u, Node v)
     {
-        if (!_nodes.TryGetValue(name, out var node))
+        if (!adjacencyList.ContainsKey(u))
         {
-            node = new Node(name);
-            _nodes[name] = node;
-            _adjacencyList[node] = new HashSet<Node>();
+            adjacencyList[u] = new HashSet<Node>();
         }
 
-        return node;
+        if (!adjacencyList.ContainsKey(v))
+        {
+            adjacencyList[v] = new HashSet<Node>();
+        }
+
+        adjacencyList[u].Add(v);
+        adjacencyList[v].Add(u);
     }
 
     public void RemoveEdge(Node u, Node v)
     {
-        if (_adjacencyList.TryGetValue(u, out var valueU))
+        if (adjacencyList.TryGetValue(u, out var neighborsU))
         {
-            valueU.Remove(v);
+            neighborsU.Remove(v);
         }
 
-        if (_adjacencyList.TryGetValue(v, out var valueV))
+        if (adjacencyList.TryGetValue(v, out var neighborsV))
         {
-            valueV.Remove(u);
+            neighborsV.Remove(u);
         }
     }
 
-    public HashSet<Node> GetNeighbors(Node node)
+    public Graph Clone()
     {
-        return _adjacencyList.TryGetValue(node, out var neighbors)
-            ? neighbors
-            : new HashSet<Node>();
-    }
+        var clone = new Graph();
+        foreach (var node in nodes.Values)
+        {
+            clone.nodes[node.name] = new Node(node.name);
+        }
 
-    public List<(Node Gateway, Node Node)> GetAvailableCorridors(
-        List<Node> gateways)
+        foreach (var kvp in adjacencyList)
+        {
+            var source = clone.nodes[kvp.Key.name];
+            clone.adjacencyList[source] = new HashSet<Node>();
+            foreach (var neighbor in kvp.Value)
+            {
+                var target = clone.nodes[neighbor.name];
+                clone.AddEdge(source, target);
+            }
+        }
+        return clone;
+    }
+    private Node GetOrCreateNode(string name)
     {
-        return gateways
-            .SelectMany(gateway => GetNeighbors(gateway)
-                .Select(node => (Gateway: gateway, Node: node)))
-            .OrderBy(x => x.Gateway.Name)
-            .ThenBy(x => x.Node.Name)
-            .ToList();
+        if (!nodes.TryGetValue(name, out var node))
+        {
+            node = new Node(name);
+            nodes[name] = node;
+        }
+        return node;
     }
-
-    public Node GetNode(string name) => _nodes.TryGetValue(name, out var node) ? node : null;
-
-    public IEnumerable<Node> GetAllNodes() => _nodes.Values;
-
-    public (Dictionary<Node, int> distances, Dictionary<Node, Node> parents) CalculateDistances(Node start)
+}
+public static class GraphExtentions
+{
+    public static Dictionary<Node, int> CalculateDistances(this Graph graph,Node start)
     {
         var distances = new Dictionary<Node, int>();
-        var parents = new Dictionary<Node, Node>();
-        var visited = new HashSet<Node>();
         var queue = new Queue<Node>();
 
         queue.Enqueue(start);
-        visited.Add(start);
         distances[start] = 0;
-        parents[start] = null;
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            var neighbors = GetNeighbors(current).OrderBy(n => n.Name);
-
-            foreach (var neighbor in neighbors)
+            foreach (var neighbor in  graph.adjacencyList[current].OrderBy(n => n.name))
             {
-                if (!visited.Contains(neighbor))
+                if (!distances.ContainsKey(neighbor))
                 {
-                    visited.Add(neighbor);
                     distances[neighbor] = distances[current] + 1;
-                    parents[neighbor] = current;
                     queue.Enqueue(neighbor);
                 }
             }
         }
 
-        return (distances, parents);
+        return distances;
+    }
+    public static string GetStateKey(this Graph graph)
+    {
+        var edges = new List<(string, string)>();
+        foreach (var kvp in graph.adjacencyList)
+        {
+            var u = kvp.Key.name;
+            foreach (var v in kvp.Value)
+            {
+                if (string.Compare(u, v.name, StringComparison.Ordinal) <= 0)
+                {
+                    edges.Add((u, v.name));
+                }
+            }
+        }
+        edges.Sort();
+        return string.Join(";", edges.Select(e => $"{e.Item1}-{e.Item2}"));
+    }
+    public static List<(Node Gateway, Node Node)> GetAvailableCorridors(this Graph graph,List<Node> gateways)
+    {
+        return gateways
+            .SelectMany(gateway => graph.adjacencyList[gateway]
+                .Where(node => !node.IsGateway)
+                .Select(node => (Gateway: gateway, Node: node)))
+            .ToList();
+    }
+
+}
+public class Virus
+{
+    public Node currentPosition;
+
+    public Virus(Node currentPosition)
+    {
+        this.currentPosition = currentPosition;
+    }
+
+    public void MoveTo(Node newPosition)
+    {
+        currentPosition = newPosition;
+    }
+
+    public (Node gate, Node nextNode) ComputeNextMove(Graph graph)
+    {
+        var gateways = graph.nodes.Values.Where(n => n.IsGateway).ToList();
+        if (gateways.Count == 0)
+        {
+            return (null,null);
+        }
+
+        Node bestGate = null;
+        int bestDist = int.MaxValue;
+        Dictionary<Node, int> bestDistMap = null;
+
+        foreach (var gate in gateways)
+        {
+            var distMap = graph.CalculateDistances(gate);
+            if (!distMap.ContainsKey(currentPosition))
+            {
+                continue;
+            }
+
+            int d = distMap[currentPosition];
+            if (d < bestDist || (d == bestDist && string.Compare(gate.name, bestGate?.name, StringComparison.Ordinal) < 0))
+            {
+                bestDist = d;
+                bestGate = gate;
+                bestDistMap = distMap;
+            }
+        }
+
+        if (bestGate == null)
+        {
+            return (null,null);
+        }
+
+        if (bestDist == 0)
+        {
+            return (bestGate, bestGate);
+        }
+
+        var neighbors = graph.adjacencyList[currentPosition].OrderBy(n => n.name).ToList();
+        var nextCandidates = neighbors
+            .Where(n => bestDistMap.TryGetValue(n, out int d) && d == bestDist - 1)
+            .ToList();
+
+        if (nextCandidates.Count == 0)
+        {
+            return (null,null);
+        }
+
+        return (bestGate, nextCandidates[0]);
     }
 }
 
-public class Virus
+public class SearchResult
 {
-    public Node CurrentPosition { get; private set; }
-    private readonly Graph _graph;
+    public (Node, Node)? EdgeToRemove { get; }
+    public List<(Node, Node)> RemainingEdges { get; }
 
-    public Virus(Node startPosition, Graph graph)
+    public SearchResult((Node, Node)? edgeToRemove, List<(Node, Node)> remainingEdges)
     {
-        CurrentPosition = startPosition;
-        _graph = graph;
-    }
-
-    public void MakeMove(Graph graph, List<Node> gateways)
-    {
-
-        (var distances, var parents) = graph.CalculateDistances(CurrentPosition);
-        var targetGateway = CalculateTargetGateway(gateways, distances);
-        if (targetGateway == null)
-        {
-            return;
-        }
-
-        MoveTowardsTarget(targetGateway, distances);
-    }
-
-    public Node CalculateTargetGateway(List<Node> gateways, Dictionary<Node, int> distances)
-    {
-        return gateways
-            .Where(x => distances.ContainsKey(x))
-            .OrderBy(x => distances[x])
-            .ThenBy(x => x.Name)
-            .FirstOrDefault();
-    }
-
-    private void MoveTowardsTarget(Node targetGateway, Dictionary<Node, int> distances)
-    {
-        var path = FindShortestPath(CurrentPosition, targetGateway, distances);
-        if (path != null && path.Count > 1)
-        {
-            CurrentPosition = path[1];
-        }
-    }
-
-    private List<Node> FindShortestPath(Node start, Node target, Dictionary<Node, int> distances)
-    {
-        if (!distances.ContainsKey(target))
-        {
-            return null;
-        }
-
-        var path = new List<Node> { target };
-        var current = target;
-
-        while (current != start)
-        {
-            var neighbors = _graph.GetNeighbors(current)
-                .Where(x => distances.ContainsKey(x) && distances[x] == distances[current] - 1)
-                .OrderBy(x => x.Name)
-                .ToList();
-            if (!neighbors.Any())
-            {
-                return null;
-            }
-
-            current = neighbors.First();
-            path.Insert(0, current);
-        }
-//просто коментарий
-        return path;
+        EdgeToRemove = edgeToRemove;
+        RemainingEdges = remainingEdges;
     }
 }
